@@ -1,10 +1,12 @@
-
+from board import *
 
 import pygame
 import sys
 import time
 import random
 import math
+
+from ai import get_move
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
@@ -47,7 +49,7 @@ WHITE = 2
 # Game modes
 MODE_HvAI = 1
 MODE_HvH  = 2
-
+MODE_AIvAI = 3  
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -201,7 +203,13 @@ def draw_panel(surface, fonts, state):
     # ── Title ──
     title = surface.blit(f_title.render("GOMOKU", True, C_TEXT_HI), (x, y))
     y += title.height + 4
-    mode_name = "Human vs AI" if state.mode == MODE_HvAI else "Hotseat"
+    # mode_name = "Human vs AI" if state.mode == MODE_HvAI else "Hotseat"
+    if state.mode == MODE_HvAI:
+        mode_name = "Human vs AI"
+    elif state.mode == MODE_HvH:
+        mode_name = "Hotseat"
+    else:
+        mode_name = "AI vs AI"
     surface.blit(f_small.render(mode_name, True, C_TEXT_LO), (x, y))
     y += 28
 
@@ -375,9 +383,10 @@ def draw_mode_screen(surface, fonts):
     options = [
         ("1", "Human vs AI",    "Play against the Minimax engine"),
         ("2", "Hotseat (HvH)",  "Two players, with AI move suggestions"),
+        ("3", "AI vs AI",       "Watch two AI engines play each other"),
     ]
     for i, (key, label, desc) in enumerate(options):
-        ry = 230 + i * 110
+        ry = 210 + i * 100
         rect = pygame.Rect(cx - 180, ry, 360, 80)
         pygame.draw.rect(surface, (40, 36, 28), rect, border_radius=10)
         pygame.draw.rect(surface, C_WOOD_DARK, rect, 2, border_radius=10)
@@ -391,9 +400,8 @@ def draw_mode_screen(surface, fonts):
         dsc_surf = f_small.render(desc, True, C_TEXT_LO)
         surface.blit(dsc_surf, (rect.x + 18, ry + 60))
 
-    hint = f_small.render("Press 1 or 2 to begin", True, C_TEXT_LO)
+    hint = f_small.render("Press 1, 2 or 3 to begin", True, C_TEXT_LO)
     surface.blit(hint, (cx - hint.get_width() // 2, WIN_H - 60))
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GAME STATE
@@ -415,13 +423,20 @@ class GameState:
         self.ai_move_time_ms= None           # float ms
         self.status_msg     = ""
         self.status_is_error= False
-        self.ai_player      = WHITE if mode == MODE_HvAI else None
+        # self.ai_player      = WHITE if mode == MODE_HvAI else None
+        if mode == MODE_HvAI:
+            self.ai_player = WHITE
+        elif mode == MODE_AIvAI:
+            self.ai_player = "both"
+        else:
+            self.ai_player = None
         self.waiting_for_ai = False
 
 
     def set_status(self, msg, error=False):
         self.status_msg      = msg
         self.status_is_error = error
+
 
 
     def place_stone(self, row, col):
@@ -431,12 +446,37 @@ class GameState:
         Handles captures, win detection, and turn switching.
         """
         player = self.current_player
+        opponent = WHITE if player == BLACK else BLACK
+        # ── Validate move ──
+        if self.board[row][col] != 0:
+            self.set_status("Cell already occupied.", error=True)
+            return False
 
+        if is_move_into_capture(self.board, row, col, player):
+            self.set_status("You can't move into a capture.", error=True)
+            return False
+        # count = count_free_threes(self.board, row, col, player)
+
+        if is_double_three(self.board, row, col, player): ####
+            # check capture exception
+            temp = [r[:] for r in self.board]
+            temp[row][col] = player
+            captured_temp = apply_captures(temp, row, col, player)
+            if not captured_temp:
+                self.set_status("Double-three is forbidden.", error=True)
+                return False
 
         # ── Place the stone ──
         self.board[row][col] = player
         self.last_move = (row, col)
         self.status_msg = ""
+
+        # ── Apply captures ── ####
+        captured = apply_captures(self.board, row, col, player)
+        if player == BLACK:
+            self.cap_black += len(captured)
+        else:
+            self.cap_white += len(captured)
 
         # ── Win by capture ── #! logic not implimented yet
         if self.cap_black >= 10:
@@ -446,11 +486,19 @@ class GameState:
             self._win("White wins by capture!\n(10 stones captured)")
             return True
 
-        # ── Win by alignment ──
+        # ── Win by alignment (with endgame capture check) ──
         if check_alignment_win(self.board, row, col, player):
-            name = "Black" if player == BLACK else "White"
-            self._win(f"{name} wins!\n5 in a row!")
-            return True
+            alignment = get_alignment_stones(self.board, row, col, player)
+            opp_caps  = self.cap_white if player == BLACK else self.cap_black
+            if not can_capture_alignment(self.board, alignment, opponent):
+                name = "Black" if player == BLACK else "White"
+                self._win(f"{name} wins!\n5 in a row!")
+                return True
+            elif opp_caps >= 8:
+                name = "Black" if opponent == BLACK else "White"
+                self._win(f"{name} wins by capture!\n(broke the alignment)")
+                return True
+            # else game continues — alignment can be broken
 
         # ── Switch turn ──
         self.current_player = WHITE if player == BLACK else BLACK
@@ -467,38 +515,51 @@ class GameState:
 # AI TURN (runs in main thread; replace with threading if needed)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_ai_turn(state, surface, fonts, clock): #! this is only to test the timer display not the actual AI move
-    
+# def run_ai_turn(state, surface, fonts, clock): #! this is only to test the timer display not the actual AI move
+#     state.waiting_for_ai = True
+#     start = time.perf_counter()
 
+#     placed = False
+#     while not placed:
+#         clock.tick(FPS)
+#         for event in pygame.event.get():
+#             if event.type == pygame.QUIT:
+#                 pygame.quit(); sys.exit()
+
+#             elif event.type == pygame.KEYDOWN and event.key in (pygame.K_q, pygame.K_ESCAPE):
+#                 pygame.quit(); sys.exit()
+
+#             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+#                 pos = px_to_board(*event.pos)
+#                 if pos is None:
+#                     state.set_status("Click closer to an intersection.", error=True)
+#                     continue
+
+#                 row, col = pos
+#                 if state.place_stone(row, col):
+#                     placed = True
+
+#         redraw(surface, fonts, state)
+#         pygame.display.flip()
+
+#     state.ai_move_time_ms = (time.perf_counter() - start) * 1000
+#     state.waiting_for_ai = False
+
+def run_ai_turn(state, surface, fonts, clock):
     state.waiting_for_ai = True
+    redraw(surface, fonts, state)
+    pygame.display.flip()
+
     start = time.perf_counter()
-
-    placed = False
-    while not placed:
-        clock.tick(FPS)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-
-            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_q, pygame.K_ESCAPE):
-                pygame.quit(); sys.exit()
-
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                pos = px_to_board(*event.pos)
-                if pos is None:
-                    state.set_status("Click closer to an intersection.", error=True)
-                    continue
-
-                row, col = pos
-                if state.place_stone(row, col):
-                    placed = True
-
-        redraw(surface, fonts, state)
-        pygame.display.flip()
-
+    row, col = get_move(
+        state.board,
+        state.current_player,
+        {BLACK: state.cap_black, WHITE: state.cap_white}
+    )
     state.ai_move_time_ms = (time.perf_counter() - start) * 1000
-    state.waiting_for_ai = False
 
+    state.place_stone(row, col)
+    state.waiting_for_ai = False
 
 def run_suggestion(state):
     #! suggestion logic to be iplimented 
@@ -553,14 +614,24 @@ def main():
                     mode = MODE_HvAI
                 elif event.key == pygame.K_2:
                     mode = MODE_HvH
+                elif event.key == pygame.K_3:
+                    mode = MODE_AIvAI
                 elif event.key in (pygame.K_q, pygame.K_ESCAPE):
                     pygame.quit(); sys.exit()
+        
         draw_mode_screen(surface, fonts)
         pygame.display.flip()
         clock.tick(FPS)
 
     # ── Game initialisation ──
     state = GameState(mode)
+
+    # ── If AI vs AI, start playing immediately ──          ← ADD (block A)
+    if state.mode == MODE_AIvAI:                             # ← ADD
+        redraw(surface, fonts, state)                        # ← ADD
+        pygame.display.flip()                                # ← ADD
+        run_ai_turn(state, surface, fonts, clock)            # ← ADD
+        pygame.time.wait(300)                                # ← ADD
 
     # ── Main game loop ──
     running = True
@@ -587,6 +658,8 @@ def main():
                                     mode = MODE_HvAI
                                 elif ev2.key == pygame.K_2:
                                     mode = MODE_HvH
+                                elif ev2.key == pygame.K_3:
+                                    mode = MODE_AIvAI
                                 elif ev2.key in (pygame.K_q, pygame.K_ESCAPE):
                                     pygame.quit(); sys.exit()
                         draw_mode_screen(surface, fonts)
@@ -594,8 +667,13 @@ def main():
                         clock.tick(FPS)
                     state = GameState(mode)
 
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if state.game_over:
+                    continue
+
+                
+                if state.mode == MODE_AIvAI:
                     continue
 
                 # In HvAI mode, ignore clicks when it is the AI's turn
@@ -606,6 +684,7 @@ def main():
                 if pos is None:
                     state.set_status("Click closer to an intersection.", error=True)
                     continue
+
 
                 row, col = pos
                 success = state.place_stone(row, col)
@@ -627,6 +706,12 @@ def main():
         # ── Draw ──
         redraw(surface, fonts, state)
         pygame.display.flip()
+
+        # ── AI vs AI keeps playing automatically ──     
+        if state.mode == MODE_AIvAI and not state.game_over:
+            run_ai_turn(state, surface, fonts, clock)
+            pygame.time.wait(300)       
+
 
     pygame.quit()
     sys.exit()
