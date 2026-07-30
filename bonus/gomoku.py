@@ -130,7 +130,38 @@ def draw_board(surface):
     pygame.draw.rect(surface, C_WOOD_DARK,
         (MARGIN, MARGIN, (BOARD_SIZE-1)*CELL, (BOARD_SIZE-1)*CELL), 2)
 
+def draw_difficulty_screen(surface, fonts):
+    surface.fill((20, 18, 14))
+    cx = WIN_W // 2
 
+    t = fonts['win'].render("AI DIFFICULTY", True, C_TEXT_HI)
+    surface.blit(t, (cx - t.get_width() // 2, 80))
+
+    sub = fonts['body'].render("Select difficulty", True, C_TEXT_LO)
+    surface.blit(sub, (cx - sub.get_width() // 2, 160))
+
+    options = [
+        ("1", "Easy",    "Depth 3 - quick, weaker moves"),
+        ("2", "Medium",  "Depth 6 - balanced"),
+        ("3", "Hard",    "Depth 10 - strong, may be slower"),
+    ]
+    for i, (key, label, desc) in enumerate(options):
+        ry = 220 + i * 100
+        rect = pygame.Rect(cx - 180, ry, 360, 80)
+        pygame.draw.rect(surface, (40, 36, 28), rect, border_radius=10)
+        pygame.draw.rect(surface, C_WOOD_DARK, rect, 2, border_radius=10)
+
+        key_surf = fonts['big'].render(f"[{key}]", True, C_TEXT_HI)
+        surface.blit(key_surf, (rect.x + 18, ry + 10))
+
+        lbl_surf = fonts['body'].render(label, True, C_TEXT_WHITE)
+        surface.blit(lbl_surf, (rect.x + 18, ry + 40))
+
+        dsc_surf = fonts['small'].render(desc, True, C_TEXT_LO)
+        surface.blit(dsc_surf, (rect.x + 18, ry + 60))
+
+    hint = fonts['small'].render("Press 1-3 to begin", True, C_TEXT_LO)
+    surface.blit(hint, (cx - hint.get_width() // 2, WIN_H - 60))
 
 def draw_stone(surface, row, col, player, alpha=255):
     """Draw a single stone (black or white) at the given intersection."""
@@ -170,8 +201,6 @@ def draw_opening_screen(surface, fonts):
     options = [
         ("1", "Standard",  "No restrictions"),
         ("2", "Pro",       "1st: center. 3rd: 3+ from center."),
-        ("3", "Swap",      "White may swap colors after move 1"),
-        ("4", "Swap2",     "Complex 3-stone opening"),
     ]
     for i, (key, label, desc) in enumerate(options):
         ry = 210 + i * 90
@@ -187,8 +216,7 @@ def draw_opening_screen(surface, fonts):
         
         dsc_surf = fonts['small'].render(desc, True, C_TEXT_LO)
         surface.blit(dsc_surf, (rect.x + 18, ry + 50))
-    
-    hint = fonts['small'].render("Press 1-4 to begin", True, C_TEXT_LO)
+    hint = fonts['small'].render("Press 1 or 2 to begin", True, C_TEXT_LO)
     surface.blit(hint, (cx - hint.get_width() // 2, WIN_H - 60))
 
 def draw_all_stones(surface, board, last_move=None, suggestion=None):
@@ -247,6 +275,14 @@ def draw_panel(surface, fonts, state):
     y += 16
     surface.blit(f_small.render(f"Opening: {state.opening}", True, C_TEXT_LO), (x, y))
     y += 20
+
+    #  Difficulty (for AI modes)
+    if state.mode != MODE_HvH:  
+        diff_names = {3: "Easy", 6: "Medium", 10: "Hard"}
+        diff_name  = diff_names.get(state.difficulty, str(state.difficulty))
+        surface.blit(f_small.render(f"AI: {diff_name}", True, C_TEXT_LO), (x, y))
+        y += 20
+
     # Divider
     pygame.draw.line(surface, C_PANEL_LINE,
                      (BOARD_PX + 12, y), (BOARD_PX + PANEL_W - 12, y), 1)
@@ -263,7 +299,11 @@ def draw_panel(surface, fonts, state):
         label = f_body.render(f"  {name}'s turn", True, C_TEXT_WHITE)
         surface.blit(label, (x + 12, y + 2))
     y += 36
-
+    # ── Move counter ──
+    move_num = len(state.move_history) + 1
+    moves_txt = f_small.render(f"Move #{move_num}", True, C_TEXT_LO)
+    surface.blit(moves_txt, (x, y))
+    y += 22
     # Divider
     pygame.draw.line(surface, C_PANEL_LINE,
                      (BOARD_PX + 12, y), (BOARD_PX + PANEL_W - 12, y), 1)
@@ -445,7 +485,7 @@ def draw_mode_screen(surface, fonts):
 class GameState:
     """Holds all mutable state for an in-progress game."""
 
-    def __init__(self, mode, opening="standard"):
+    def __init__(self, mode, opening="standard", difficulty=10):
         self.mode           = mode
         self.board          = [[0]*BOARD_SIZE for _ in range(BOARD_SIZE)]
         self.current_player = BLACK          
@@ -458,6 +498,7 @@ class GameState:
         self.ai_move_time_ms= None           # float ms
         self.status_msg     = ""
         self.status_is_error= False
+        self.difficulty = difficulty
         # self.ai_player      = WHITE if mode == MODE_HvAI else None
         if mode == MODE_HvAI:
             self.ai_player = WHITE
@@ -640,7 +681,10 @@ def run_ai_turn(state, surface, fonts, clock):
     row, col = get_move(
         state.board,
         state.current_player,
-        {BLACK: state.cap_black, WHITE: state.cap_white}
+        {BLACK: state.cap_black, WHITE: state.cap_white},
+        max_depth=state.difficulty,
+        opening=state.opening,
+        move_num=len(state.move_history) + 1,
     )
     state.ai_move_time_ms = (time.perf_counter() - start) * 1000
 
@@ -708,35 +752,52 @@ def main():
         draw_mode_screen(surface, fonts)
         pygame.display.flip()
         clock.tick(FPS)
-    opening = None                                 # ← ADD
-    while opening is None:                         # ← ADD
-        for event in pygame.event.get():           # ← ADD
-            if event.type == pygame.QUIT:          # ← ADD
-                pygame.quit(); sys.exit()          # ← ADD
-            if event.type == pygame.KEYDOWN:       # ← ADD
-                if event.key == pygame.K_1:        # ← ADD
-                    opening = "standard"           # ← ADD
-                elif event.key == pygame.K_2:      # ← ADD
-                    opening = "pro"                # ← ADD
-                elif event.key == pygame.K_3:      # ← ADD
-                    opening = "swap"               # ← ADD
-                elif event.key == pygame.K_4:      # ← ADD
-                    opening = "swap2"              # ← ADD
-                elif event.key in (pygame.K_q, pygame.K_ESCAPE):   # ← ADD
-                    pygame.quit(); sys.exit()      # ← ADD
-        draw_opening_screen(surface, fonts)        # ← ADD
-        pygame.display.flip()                      # ← ADD
-        clock.tick(FPS)                            # ← ADD
+    opening = None                                 
+    while opening is None:                         
+        for event in pygame.event.get():           
+            if event.type == pygame.QUIT:          
+                pygame.quit(); sys.exit()          
+            if event.type == pygame.KEYDOWN:       
+                if event.key == pygame.K_1:        
+                    opening = "standard"           
+                elif event.key == pygame.K_2:      
+                    opening = "pro"      
+                elif event.key in (pygame.K_q, pygame.K_ESCAPE):   
+                    pygame.quit(); sys.exit()      
+        draw_opening_screen(surface, fonts)        
+        pygame.display.flip()                      
+        clock.tick(FPS)                            
+    # ── Difficulty selection ──
+    if mode == MODE_HvH:
+        difficulty = 10   # default, unused in hotseat
+    else:
+        difficulty = None
+        while difficulty is None:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_1:
+                        difficulty = 3
+                    elif event.key == pygame.K_2:
+                        difficulty = 6
+                    elif event.key == pygame.K_3:
+                        difficulty = 10
+                    elif event.key in (pygame.K_q, pygame.K_ESCAPE):
+                        pygame.quit(); sys.exit()
+            draw_difficulty_screen(surface, fonts)
+            pygame.display.flip()
+            clock.tick(FPS)
 
     # ── Game initialisation ──
-    state = GameState(mode, opening=opening)
+    state = GameState(mode, opening=opening, difficulty=difficulty)
 
     # ── If AI vs AI, start playing immediately ──          ← ADD (block A)
-    if state.mode == MODE_AIvAI:                             # ← ADD
-        redraw(surface, fonts, state)                        # ← ADD
-        pygame.display.flip()                                # ← ADD
-        run_ai_turn(state, surface, fonts, clock)            # ← ADD
-        pygame.time.wait(300)                                # ← ADD
+    if state.mode == MODE_AIvAI:                             
+        redraw(surface, fonts, state)                        
+        pygame.display.flip()                                
+        run_ai_turn(state, surface, fonts, clock)            
+        pygame.time.wait(300)                                
 
     # ── Main game loop ──
     running = True
@@ -830,4 +891,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pygame.quit()
+        sys.exit(0)

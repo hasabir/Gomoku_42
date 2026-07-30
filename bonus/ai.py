@@ -1,5 +1,7 @@
 from constant import *
 from board import *
+import random
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -293,32 +295,50 @@ def minimax(board, depth, alpha, beta, maximizing, ai_player, captures, start=No
 # ─────────────────────────────────────────────────────────────────────────────
 import time
 
-TIME_LIMIT = 0.45  # 450ms, safely under the 500ms requirement
+TIME_LIMIT = 0.45
 
-def get_move(board, player, captures):
+def get_move(board, player, captures, max_depth=MAX_DEPTH, opening="standard", move_num=1):
     board_copy = copy_board(board)
-    
-    # filter to only legal moves first
+
+    def pro_legal(r, c):
+        """Check Pro opening restrictions."""
+        if opening != "pro":
+            return True
+        if move_num == 1 and (r, c) != (9, 9):
+            return False
+        if move_num == 3 and max(abs(r - 9), abs(c - 9)) < 3:
+            return False
+        return True
+
+    # filter to only legal moves — both rules and pro opening
     candidates = [
         (r, c) for r, c in get_candidates(board_copy)
-        if is_legal_move(board_copy, r, c, player)[0]
+        if is_legal_move(board_copy, r, c, player)[0] and pro_legal(r, c)
     ]
-    
+
+    if not candidates:
+        # fallback: any legal move ignoring pro (shouldn't happen)
+        candidates = [
+            (r, c) for r, c in get_candidates(board_copy)
+            if is_legal_move(board_copy, r, c, player)[0]
+        ]
+
     if not candidates:
         return get_candidates(board_copy)[0]
-    
+
     best_move = candidates[0]
     start = time.perf_counter()
-    
-    for depth in range(1, MAX_DEPTH + 1):
+
+    for depth in range(1, max_depth + 1):
         if time.perf_counter() - start > TIME_LIMIT:
             break
         _, move = minimax(board_copy, depth, LOSE_SCORE, WIN_SCORE,
                          True, player, captures, start, TIME_LIMIT)
-        if move:
+        if move and pro_legal(*move):
             best_move = move
         if time.perf_counter() - start > TIME_LIMIT:
             break
+
     print(f"Reached depth {depth}, time {(time.perf_counter() - start)*1000:.0f}ms")
     return best_move
 
@@ -326,11 +346,12 @@ def get_move(board, player, captures):
 def order_moves(candidates, board, player, captures):
     """Score each candidate quickly and sort best first."""
     scored = []
-    opponent = WHITE if player == BLACK else BLACK
     for r, c in candidates:
         board[r][c] = player
         s = evaluate(board, player, captures)
         board[r][c] = 0
         scored.append((s, r, c))
-    scored.sort(reverse=True)
-    return [(r, c) for s, r, c in scored]
+
+    random.shuffle(scored)      # ← ADD: shuffle first
+    scored.sort(reverse=True, key=lambda x: x[0])   # ← sort only by score, ties stay shuffled
+    return [(r, c) for s, r, c in scored[:10]]

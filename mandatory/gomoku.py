@@ -626,12 +626,12 @@ def main():
     # ── Game initialisation ──
     state = GameState(mode)
 
-    # ── If AI vs AI, start playing immediately ──          ← ADD (block A)
-    if state.mode == MODE_AIvAI:                             # ← ADD
-        redraw(surface, fonts, state)                        # ← ADD
-        pygame.display.flip()                                # ← ADD
-        run_ai_turn(state, surface, fonts, clock)            # ← ADD
-        pygame.time.wait(300)                                # ← ADD
+    # ── If AI vs AI, start playing immediately ──          
+    if state.mode == MODE_AIvAI:                            
+        redraw(surface, fonts, state)                       
+        pygame.display.flip()                               
+        run_ai_turn(state, surface, fonts, clock)           
+        pygame.time.wait(300)                               
 
     # ── Main game loop ──
     running = True
