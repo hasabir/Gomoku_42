@@ -4,7 +4,7 @@ from board import *
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-MAX_DEPTH = 10
+MAX_DEPTH = 100
 
 WIN_SCORE      = 10_000_000
 LOSE_SCORE     = -10_000_000
