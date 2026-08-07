@@ -1,22 +1,23 @@
+<<<<<<< HEAD
 from board import place_stone
 
+=======
+from board import *
+from constant import *
+from board_to_px import board_to_px, px_to_board
+>>>>>>> refs/remotes/origin/main
 import pygame
 import sys
 import time
 import random
 import math
-
+from draw import Draw
 from ai import get_move
+from game_state import GameState
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────────────────────────────────────
 
-BOARD_SIZE   = 19          # 19×19 intersections
-CELL         = 42          # pixels between intersections
-MARGIN       = 48          # pixels from window edge to first/last line
-BOARD_PX     = MARGIN * 2 + CELL * (BOARD_SIZE - 1)   # board canvas size
 
+<<<<<<< HEAD
 PANEL_W      = 260         # right-side info panel width
 WIN_W        = BOARD_PX + PANEL_W
 WIN_H        = BOARD_PX
@@ -442,6 +443,8 @@ class GameState:
         self.win_message = message
         self.set_status(message)
 
+=======
+>>>>>>> refs/remotes/origin/main
 
 def run_ai_turn(state, surface, fonts, clock):
     state.waiting_for_ai = True
@@ -470,16 +473,41 @@ def run_suggestion(state):
 
 def redraw(surface, fonts, state):
     """Composite the entire frame: board + stones + panel."""
-    draw_board(surface)
-    draw_all_stones(surface, state.board,
+    game = Draw(surface, fonts, state)
+    game.draw_board()
+    game.draw_all_stones(state.board,
                     last_move=state.last_move,
                     suggestion=state.suggestion if state.mode == MODE_HvH else None)
-    draw_panel(surface, fonts, state)
+    game.draw_panel()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
+
+def mode_selection(surface, fonts, clock):
+    mode = None
+    while mode is None:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    mode = MODE_HvAI
+                elif event.key == pygame.K_2:
+                    mode = MODE_HvH
+                elif event.key == pygame.K_3:
+                    mode = MODE_AIvAI
+                elif event.key in (pygame.K_q, pygame.K_ESCAPE):
+                    pygame.quit(); sys.exit()
+        
+        Draw.draw_mode_screen(surface, fonts)
+        pygame.display.flip()
+        clock.tick(FPS)
+    return mode
+
+
+
 
 def main():
     pygame.init()
@@ -502,24 +530,7 @@ def main():
         fonts = {k: f for k in ('title','body','small','big','win')}
 
     # ── Mode selection ──
-    mode = None
-    while mode is None:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:
-                    mode = MODE_HvAI
-                elif event.key == pygame.K_2:
-                    mode = MODE_HvH
-                elif event.key == pygame.K_3:
-                    mode = MODE_AIvAI
-                elif event.key in (pygame.K_q, pygame.K_ESCAPE):
-                    pygame.quit(); sys.exit()
-        
-        draw_mode_screen(surface, fonts)
-        pygame.display.flip()
-        clock.tick(FPS)
+    mode = mode_selection(surface, fonts, clock)
 
     # ── Game initialisation ──
     state = GameState(mode)
@@ -546,37 +557,15 @@ def main():
 
                 elif event.key == pygame.K_r:
                     # Restart: go back to mode select
-                    mode = None
-                    while mode is None:
-                        for ev2 in pygame.event.get():
-                            if ev2.type == pygame.QUIT:
-                                pygame.quit(); sys.exit()
-                            if ev2.type == pygame.KEYDOWN:
-                                if ev2.key == pygame.K_1:
-                                    mode = MODE_HvAI
-                                elif ev2.key == pygame.K_2:
-                                    mode = MODE_HvH
-                                elif ev2.key == pygame.K_3:
-                                    mode = MODE_AIvAI
-                                elif ev2.key in (pygame.K_q, pygame.K_ESCAPE):
-                                    pygame.quit(); sys.exit()
-                        draw_mode_screen(surface, fonts)
-                        pygame.display.flip()
-                        clock.tick(FPS)
+                    mode = mode_selection(surface, fonts, clock)
                     state = GameState(mode)
 
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if state.game_over:
+                if state.game_over or state.mode == MODE_AIvAI or \
+                (state.mode == MODE_HvAI and state.current_player == state.ai_player):
                     continue
 
-                
-                if state.mode == MODE_AIvAI:
-                    continue
-
-                # In HvAI mode, ignore clicks when it is the AI's turn
-                if state.mode == MODE_HvAI and state.current_player == state.ai_player:
-                    continue
 
                 pos = px_to_board(*event.pos)
                 if pos is None:
@@ -585,14 +574,20 @@ def main():
 
 
                 row, col = pos
+<<<<<<< HEAD
                 success = place_stone(state, row, col)
+=======
+>>>>>>> refs/remotes/origin/main
 
-                if success and not state.game_over:
+
+                if state.place_stone(row, col) and not state.game_over:
                     # HvAI: trigger AI response
                     if state.mode == MODE_HvAI and state.current_player == state.ai_player:
                         redraw(surface, fonts, state)
                         pygame.display.flip()
+                        print(state.waiting_for_ai)
                         run_ai_turn(state, surface, fonts, clock)
+                        print(state.waiting_for_ai)
 
                     # Hotseat: compute suggestion for the next player
                     elif state.mode == MODE_HvH:
