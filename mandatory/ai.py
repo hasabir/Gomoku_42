@@ -17,11 +17,6 @@ LOSE_SCORE     = -10_000_000
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_candidates(board):
-    """
-    Don't consider the entire 19x19 board.
-    Only look at empty cells within 2 steps of any existing stone.
-    If board is empty, return center.
-    """
     occupied = []
     for r in range(BOARD_SIZE):
         for c in range(BOARD_SIZE):
@@ -29,20 +24,17 @@ def get_candidates(board):
                 occupied.append((r, c))
 
     if not occupied:
-        return [(9, 9)]  # first move always center
+        return [(9, 9)]
 
     candidates = set()
     for r, c in occupied:
-        for dr in range(-2, 3):
-            for dc in range(-2, 3):
+        for dr in range(-1, 2):        # radius 1
+            for dc in range(-1, 2):
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE:
                     if board[nr][nc] == EMPTY:
                         candidates.add((nr, nc))
-
     return list(candidates)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # HEURISTIC
 # ─────────────────────────────────────────────────────────────────────────────
@@ -298,39 +290,59 @@ import time
 
 TIME_LIMIT = 0.45  # 450ms, safely under the 500ms requirement
 
-def get_move(board, player, captures):
-    opponent = WHITE if player == BLACK else BLACK
+def get_move(board, player, captures, max_depth=MAX_DEPTH):
     board_copy = copy_board(board)
+    opponent = WHITE if player == BLACK else BLACK
     
-    # filter to only legal moves first
     candidates = [
         (r, c) for r, c in get_candidates(board_copy)
         if is_legal_move(board_copy, r, c, player)[0]
     ]
+    
     if not candidates:
         return get_candidates(board_copy)[0]
-    
-    # ── Immediate win check ──
+
+    # ── 1. Winning move: play it now ──
     for r, c in candidates:
         board_copy[r][c] = player
         if check_alignment(board_copy, r, c, player):
             board_copy[r][c] = 0
+            print("Immediate win move")
             return (r, c)
         board_copy[r][c] = 0
 
-     # ── Immediate block check ──
+    # ── 2. Block opponent's winning move ──
     for r, c in candidates:
         board_copy[r][c] = opponent
         if check_alignment(board_copy, r, c, opponent):
             board_copy[r][c] = 0
-            return (r, c)   # block their winning move
+            print("Blocking opponent win")
+            return (r, c)
+        board_copy[r][c] = 0
+
+    # ── 3. Block opponent's open-four (4 in a row with open end) ──
+    for r, c in candidates:
+        board_copy[r][c] = opponent
+        # simulate opponent playing here, check if they now have 4 in a row
+        for dr, dc in [(0,1),(1,0),(1,1),(1,-1)]:
+            count = 1
+            for step in [1, -1]:
+                nr, nc = r + step*dr, c + step*dc
+                while 0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board_copy[nr][nc] == opponent:
+                    count += 1
+                    nr += step*dr
+                    nc += step*dc
+            if count >= 4:
+                board_copy[r][c] = 0
+                print("Blocking 4-in-a-row")
+                return (r, c)
         board_copy[r][c] = 0
 
     # ── Otherwise, normal minimax ──
     best_move = candidates[0]
     start = time.perf_counter()
-
-    for depth in range(1, MAX_DEPTH + 1):
+    
+    for depth in range(1, max_depth + 1):
         if time.perf_counter() - start > TIME_LIMIT:
             break
         _, move = minimax(board_copy, depth, LOSE_SCORE, WIN_SCORE,
@@ -339,20 +351,18 @@ def get_move(board, player, captures):
             best_move = move
         if time.perf_counter() - start > TIME_LIMIT:
             break
-    print(f"Reached depth {depth}, time {(time.perf_counter() - start)*1000:.0f}ms")
+    
     return best_move
 
 
+
 def order_moves(candidates, board, player, captures):
-    """Score each candidate quickly and sort best first."""
     scored = []
     for r, c in candidates:
         board[r][c] = player
         s = evaluate(board, player, captures)
         board[r][c] = 0
         scored.append((s, r, c))
-
-    random.shuffle(scored)      # ← ADD: shuffle first
-    scored.sort(reverse=True, key=lambda x: x[0])   # ← sort only by score, ties stay shuffled
-    return [(r, c) for s, r, c in scored[:10]]
-
+    random.shuffle(scored)
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [(r, c) for s, r, c in scored[:8]]      # ← top 8

@@ -16,11 +16,6 @@ LOSE_SCORE     = -10_000_000
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_candidates(board):
-    """
-    Don't consider the entire 19x19 board.
-    Only look at empty cells within 2 steps of any existing stone.
-    If board is empty, return center.
-    """
     occupied = []
     for r in range(BOARD_SIZE):
         for c in range(BOARD_SIZE):
@@ -28,20 +23,17 @@ def get_candidates(board):
                 occupied.append((r, c))
 
     if not occupied:
-        return [(9, 9)]  # first move always center
+        return [(9, 9)]
 
     candidates = set()
     for r, c in occupied:
-        for dr in range(-2, 3):
-            for dc in range(-2, 3):
+        for dr in range(-1, 2):        # radius 1
+            for dc in range(-1, 2):
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE:
                     if board[nr][nc] == EMPTY:
                         candidates.add((nr, nc))
-
     return list(candidates)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # HEURISTIC
 # ─────────────────────────────────────────────────────────────────────────────
@@ -299,9 +291,9 @@ TIME_LIMIT = 0.45
 
 def get_move(board, player, captures, max_depth=MAX_DEPTH, opening="standard", move_num=1):
     board_copy = copy_board(board)
+    opponent = WHITE if player == BLACK else BLACK
 
     def pro_legal(r, c):
-        """Check Pro opening restrictions."""
         if opening != "pro":
             return True
         if move_num == 1 and (r, c) != (9, 9):
@@ -310,22 +302,52 @@ def get_move(board, player, captures, max_depth=MAX_DEPTH, opening="standard", m
             return False
         return True
 
-    # filter to only legal moves — both rules and pro opening
     candidates = [
         (r, c) for r, c in get_candidates(board_copy)
         if is_legal_move(board_copy, r, c, player)[0] and pro_legal(r, c)
     ]
 
     if not candidates:
-        # fallback: any legal move ignoring pro (shouldn't happen)
         candidates = [
             (r, c) for r, c in get_candidates(board_copy)
             if is_legal_move(board_copy, r, c, player)[0]
         ]
-
     if not candidates:
         return get_candidates(board_copy)[0]
 
+    # ── 1. Winning move ──
+    for r, c in candidates:
+        board_copy[r][c] = player
+        if check_alignment(board_copy, r, c, player):
+            board_copy[r][c] = 0
+            return (r, c)
+        board_copy[r][c] = 0
+
+    # ── 2. Block opponent's winning move ──
+    for r, c in candidates:
+        board_copy[r][c] = opponent
+        if check_alignment(board_copy, r, c, opponent):
+            board_copy[r][c] = 0
+            return (r, c)
+        board_copy[r][c] = 0
+
+    # ── 3. Block opponent 4-in-a-row ──
+    for r, c in candidates:
+        board_copy[r][c] = opponent
+        for dr, dc in [(0,1),(1,0),(1,1),(1,-1)]:
+            count = 1
+            for step in [1, -1]:
+                nr, nc = r + step*dr, c + step*dc
+                while 0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board_copy[nr][nc] == opponent:
+                    count += 1
+                    nr += step*dr
+                    nc += step*dc
+            if count >= 4:
+                board_copy[r][c] = 0
+                return (r, c)
+        board_copy[r][c] = 0
+
+    # ── Minimax with iterative deepening ──
     best_move = candidates[0]
     start = time.perf_counter()
 
@@ -339,19 +361,15 @@ def get_move(board, player, captures, max_depth=MAX_DEPTH, opening="standard", m
         if time.perf_counter() - start > TIME_LIMIT:
             break
 
-    print(f"Reached depth {depth}, time {(time.perf_counter() - start)*1000:.0f}ms")
     return best_move
 
-
 def order_moves(candidates, board, player, captures):
-    """Score each candidate quickly and sort best first."""
     scored = []
     for r, c in candidates:
         board[r][c] = player
         s = evaluate(board, player, captures)
         board[r][c] = 0
         scored.append((s, r, c))
-
-    random.shuffle(scored)      # ← ADD: shuffle first
-    scored.sort(reverse=True, key=lambda x: x[0])   # ← sort only by score, ties stay shuffled
-    return [(r, c) for s, r, c in scored[:10]]
+    random.shuffle(scored)
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [(r, c) for s, r, c in scored[:8]]      # ← top 8
