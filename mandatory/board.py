@@ -1,7 +1,22 @@
 from constant import *
 
-def create_board():
-    return [[EMPTY] * BOARD_SIZE for _ in range(BOARD_SIZE)]
+def check_alignment_win(board, row, col, player):
+    """
+    Returns True if placing at (row, col) gives `player` 5 or more in a row
+    in any of the four directions.
+    """
+    directions = [(0,1),(1,0),(1,1),(1,-1)]
+    for dr, dc in directions:
+        count = 1
+        for sign in (1, -1):
+            r, c = row + sign*dr, col + sign*dc
+            while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r][c] == player:
+                count += 1
+                r += sign*dr
+                c += sign*dc
+        if count >= 5:
+            return True
+    return False
 
 def copy_board(board):
     return [row[:] for row in board]
@@ -9,26 +24,71 @@ def copy_board(board):
 def is_valid_pos(r, c):
     return 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE
 
-def place_stone(self, row, col):
-    player   = self.current_player
+def place_stone(state, row, col):
+    """
+    Attempt to place the current player's stone at (row, col).
+    Returns True on success, False if the move was blocked.
+    Handles captures, win detection, and turn switching.
+    """
+    player = state.current_player
     opponent = WHITE if player == BLACK else BLACK
-
-    if self.board[row][col] != 0:
-        self.set_status("Cell already occupied.", error=True)
+    # ── Validate move ──
+    if state.board[row][col] != 0:
+        state.set_status("Cell already occupied.", error=True)
         return False
 
-    if is_move_into_capture(self.board, row, col, player):
-        self.set_status("Can't move into a capture.", error=True)
+    if is_move_into_capture(state.board, row, col, player):
+        state.set_status("You can't move into a capture.", error=True)
         return False
+    # count = count_free_threes(state.board, row, col, player)
 
-    if is_double_three(self.board, row, col, player):
-        temp = [r[:] for r in self.board]
+    if is_double_three(state.board, row, col, player): ####
+        # check capture exception
+        temp = [r[:] for r in state.board]
         temp[row][col] = player
         captured_temp = apply_captures(temp, row, col, player)
         if not captured_temp:
-            self.set_status("Double-three is forbidden.", error=True)
+            state.set_status("Double-three is forbidden.", error=True)
             return False
-        
+
+    # ── Place the stone ──
+    state.board[row][col] = player
+    state.last_move = (row, col)
+    state.status_msg = ""
+
+    # ── Apply captures ── ####
+    captured = apply_captures(state.board, row, col, player)
+    if player == BLACK:
+        state.cap_black += len(captured)
+    else:
+        state.cap_white += len(captured)
+
+    # ── Win by capture ── #! logic not implimented yet
+    if state.cap_black >= 10:
+        state._win("Black wins by capture!\n(10 stones captured)")
+        return True
+    if state.cap_white >= 10:
+        state._win("White wins by capture!\n(10 stones captured)")
+        return True
+
+    # ── Win by alignment (with endgame capture check) ──
+    if check_alignment_win(state.board, row, col, player):
+        alignment = get_alignment_stones(state.board, row, col, player)
+        opp_caps  = state.cap_white if player == BLACK else state.cap_black
+        if not can_capture_alignment(state.board, alignment, opponent):
+            name = "Black" if player == BLACK else "White"
+            state._win(f"{name} wins!\n5 in a row!")
+            return True
+        elif opp_caps >= 8:
+            name = "Black" if opponent == BLACK else "White"
+            state._win(f"{name} wins by capture!\n(broke the alignment)")
+            return True
+        # else game continues — alignment can be broken
+
+    # ── Switch turn ──
+    state.current_player = WHITE if player == BLACK else BLACK
+    return True
+
 def remove_stone(board, r, c):
     board[r][c] = EMPTY
 

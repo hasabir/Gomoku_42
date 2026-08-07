@@ -1,5 +1,8 @@
 from constant import *
-from board import *
+from board import copy_board, is_legal_move, apply_captures, check_alignment
+import random
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,6 +299,7 @@ import time
 TIME_LIMIT = 0.45  # 450ms, safely under the 500ms requirement
 
 def get_move(board, player, captures):
+    opponent = WHITE if player == BLACK else BLACK
     board_copy = copy_board(board)
     
     # filter to only legal moves first
@@ -303,13 +307,29 @@ def get_move(board, player, captures):
         (r, c) for r, c in get_candidates(board_copy)
         if is_legal_move(board_copy, r, c, player)[0]
     ]
-    
     if not candidates:
         return get_candidates(board_copy)[0]
     
+    # ── Immediate win check ──
+    for r, c in candidates:
+        board_copy[r][c] = player
+        if check_alignment(board_copy, r, c, player):
+            board_copy[r][c] = 0
+            return (r, c)
+        board_copy[r][c] = 0
+
+     # ── Immediate block check ──
+    for r, c in candidates:
+        board_copy[r][c] = opponent
+        if check_alignment(board_copy, r, c, opponent):
+            board_copy[r][c] = 0
+            return (r, c)   # block their winning move
+        board_copy[r][c] = 0
+
+    # ── Otherwise, normal minimax ──
     best_move = candidates[0]
     start = time.perf_counter()
-    
+
     for depth in range(1, MAX_DEPTH + 1):
         if time.perf_counter() - start > TIME_LIMIT:
             break
@@ -326,11 +346,13 @@ def get_move(board, player, captures):
 def order_moves(candidates, board, player, captures):
     """Score each candidate quickly and sort best first."""
     scored = []
-    opponent = WHITE if player == BLACK else BLACK
     for r, c in candidates:
         board[r][c] = player
         s = evaluate(board, player, captures)
         board[r][c] = 0
         scored.append((s, r, c))
-    scored.sort(reverse=True)
-    return [(r, c) for s, r, c in scored]
+
+    random.shuffle(scored)      # ← ADD: shuffle first
+    scored.sort(reverse=True, key=lambda x: x[0])   # ← sort only by score, ties stay shuffled
+    return [(r, c) for s, r, c in scored[:10]]
+

@@ -1,4 +1,4 @@
-from board import *
+from board import place_stone
 
 import pygame
 import sys
@@ -437,113 +437,11 @@ class GameState:
         self.status_msg      = msg
         self.status_is_error = error
 
-
-
-    def place_stone(self, row, col):
-        """
-        Attempt to place the current player's stone at (row, col).
-        Returns True on success, False if the move was blocked.
-        Handles captures, win detection, and turn switching.
-        """
-        player = self.current_player
-        opponent = WHITE if player == BLACK else BLACK
-        # ── Validate move ──
-        if self.board[row][col] != 0:
-            self.set_status("Cell already occupied.", error=True)
-            return False
-
-        if is_move_into_capture(self.board, row, col, player):
-            self.set_status("You can't move into a capture.", error=True)
-            return False
-        # count = count_free_threes(self.board, row, col, player)
-
-        if is_double_three(self.board, row, col, player): ####
-            # check capture exception
-            temp = [r[:] for r in self.board]
-            temp[row][col] = player
-            captured_temp = apply_captures(temp, row, col, player)
-            if not captured_temp:
-                self.set_status("Double-three is forbidden.", error=True)
-                return False
-
-        # ── Place the stone ──
-        self.board[row][col] = player
-        self.last_move = (row, col)
-        self.status_msg = ""
-
-        # ── Apply captures ── ####
-        captured = apply_captures(self.board, row, col, player)
-        if player == BLACK:
-            self.cap_black += len(captured)
-        else:
-            self.cap_white += len(captured)
-
-        # ── Win by capture ── #! logic not implimented yet
-        if self.cap_black >= 10:
-            self._win("Black wins by capture!\n(10 stones captured)")
-            return True
-        if self.cap_white >= 10:
-            self._win("White wins by capture!\n(10 stones captured)")
-            return True
-
-        # ── Win by alignment (with endgame capture check) ──
-        if check_alignment_win(self.board, row, col, player):
-            alignment = get_alignment_stones(self.board, row, col, player)
-            opp_caps  = self.cap_white if player == BLACK else self.cap_black
-            if not can_capture_alignment(self.board, alignment, opponent):
-                name = "Black" if player == BLACK else "White"
-                self._win(f"{name} wins!\n5 in a row!")
-                return True
-            elif opp_caps >= 8:
-                name = "Black" if opponent == BLACK else "White"
-                self._win(f"{name} wins by capture!\n(broke the alignment)")
-                return True
-            # else game continues — alignment can be broken
-
-        # ── Switch turn ──
-        self.current_player = WHITE if player == BLACK else BLACK
-        return True
-
-
     def _win(self, message):
         self.game_over   = True
         self.win_message = message
         self.set_status(message)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# AI TURN (runs in main thread; replace with threading if needed)
-# ─────────────────────────────────────────────────────────────────────────────
-
-# def run_ai_turn(state, surface, fonts, clock): #! this is only to test the timer display not the actual AI move
-#     state.waiting_for_ai = True
-#     start = time.perf_counter()
-
-#     placed = False
-#     while not placed:
-#         clock.tick(FPS)
-#         for event in pygame.event.get():
-#             if event.type == pygame.QUIT:
-#                 pygame.quit(); sys.exit()
-
-#             elif event.type == pygame.KEYDOWN and event.key in (pygame.K_q, pygame.K_ESCAPE):
-#                 pygame.quit(); sys.exit()
-
-#             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-#                 pos = px_to_board(*event.pos)
-#                 if pos is None:
-#                     state.set_status("Click closer to an intersection.", error=True)
-#                     continue
-
-#                 row, col = pos
-#                 if state.place_stone(row, col):
-#                     placed = True
-
-#         redraw(surface, fonts, state)
-#         pygame.display.flip()
-
-#     state.ai_move_time_ms = (time.perf_counter() - start) * 1000
-#     state.waiting_for_ai = False
 
 def run_ai_turn(state, surface, fonts, clock):
     state.waiting_for_ai = True
@@ -558,7 +456,7 @@ def run_ai_turn(state, surface, fonts, clock):
     )
     state.ai_move_time_ms = (time.perf_counter() - start) * 1000
 
-    state.place_stone(row, col)
+    place_stone(state, row, col)
     state.waiting_for_ai = False
 
 def run_suggestion(state):
@@ -687,7 +585,7 @@ def main():
 
 
                 row, col = pos
-                success = state.place_stone(row, col)
+                success = place_stone(state, row, col)
 
                 if success and not state.game_over:
                     # HvAI: trigger AI response
@@ -717,5 +615,11 @@ def main():
     sys.exit()
 
 
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pygame.quit()
+        sys.exit(0)
+
