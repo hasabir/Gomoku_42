@@ -569,6 +569,60 @@ def redraw(surface, fonts, state):
     draw_panel(surface, fonts, state)
 
 
+def select_game_settings(surface, fonts, clock):
+    """Runs mode → opening → difficulty screens. Returns tuple."""
+    # ── Mode ──
+    mode = None
+    while mode is None:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:   mode = MODE_HvAI
+                elif event.key == pygame.K_2: mode = MODE_HvH
+                elif event.key == pygame.K_3: mode = MODE_AIvAI
+                elif event.key in (pygame.K_q, pygame.K_ESCAPE):
+                    pygame.quit(); sys.exit()
+        draw_mode_screen(surface, fonts)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    # ── Opening ──
+    opening = None
+    while opening is None:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:   opening = "standard"
+                elif event.key == pygame.K_2: opening = "pro"
+                elif event.key in (pygame.K_q, pygame.K_ESCAPE):
+                    pygame.quit(); sys.exit()
+        draw_opening_screen(surface, fonts)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    # ── Difficulty (skip for HvH) ──
+    if mode == MODE_HvH:
+        difficulty = 10
+    else:
+        difficulty = None
+        while difficulty is None:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_1:   difficulty = 3
+                    elif event.key == pygame.K_2: difficulty = 6
+                    elif event.key == pygame.K_3: difficulty = 10
+                    elif event.key in (pygame.K_q, pygame.K_ESCAPE):
+                        pygame.quit(); sys.exit()
+            draw_difficulty_screen(surface, fonts)
+            pygame.display.flip()
+            clock.tick(FPS)
+
+    return mode, opening, difficulty
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -580,84 +634,27 @@ def main():
     surface = pygame.display.set_mode((WIN_W, WIN_H))
     clock   = pygame.time.Clock()
 
-    # ── Fonts ──
     try:
         fonts = {
-            'title': pygame.font.SysFont("Georgia",       26, bold=True),
-            'body':  pygame.font.SysFont("Georgia",       18),
-            'small': pygame.font.SysFont("Courier",       13),
-            'big':   pygame.font.SysFont("Georgia",       22, bold=True),
-            'win':   pygame.font.SysFont("Georgia",       30, bold=True),
+            'title': pygame.font.SysFont("Georgia", 26, bold=True),
+            'body':  pygame.font.SysFont("Georgia", 18),
+            'small': pygame.font.SysFont("Courier", 13),
+            'big':   pygame.font.SysFont("Georgia", 22, bold=True),
+            'win':   pygame.font.SysFont("Georgia", 30, bold=True),
         }
     except Exception:
         f = pygame.font.Font(None, 24)
         fonts = {k: f for k in ('title','body','small','big','win')}
 
-    # ── Mode selection ──
-    mode = None
-    while mode is None:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1:
-                    mode = MODE_HvAI
-                elif event.key == pygame.K_2:
-                    mode = MODE_HvH
-                elif event.key == pygame.K_3:
-                    mode = MODE_AIvAI
-                elif event.key in (pygame.K_q, pygame.K_ESCAPE):
-                    pygame.quit(); sys.exit()
-        
-        draw_mode_screen(surface, fonts)
-        pygame.display.flip()
-        clock.tick(FPS)
-    opening = None                                 
-    while opening is None:                         
-        for event in pygame.event.get():           
-            if event.type == pygame.QUIT:          
-                pygame.quit(); sys.exit()          
-            if event.type == pygame.KEYDOWN:       
-                if event.key == pygame.K_1:        
-                    opening = "standard"           
-                elif event.key == pygame.K_2:      
-                    opening = "pro"      
-                elif event.key in (pygame.K_q, pygame.K_ESCAPE):   
-                    pygame.quit(); sys.exit()      
-        draw_opening_screen(surface, fonts)        
-        pygame.display.flip()                      
-        clock.tick(FPS)                            
-    # ── Difficulty selection ──
-    if mode == MODE_HvH:
-        difficulty = 10   # default, unused in hotseat
-    else:
-        difficulty = None
-        while difficulty is None:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit(); sys.exit()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_1:
-                        difficulty = 3
-                    elif event.key == pygame.K_2:
-                        difficulty = 6
-                    elif event.key == pygame.K_3:
-                        difficulty = 10
-                    elif event.key in (pygame.K_q, pygame.K_ESCAPE):
-                        pygame.quit(); sys.exit()
-            draw_difficulty_screen(surface, fonts)
-            pygame.display.flip()
-            clock.tick(FPS)
-
-    # ── Game initialisation ──
+    # ── Initial game setup ──
+    mode, opening, difficulty = select_game_settings(surface, fonts, clock)
     state = GameState(mode, opening=opening, difficulty=difficulty)
 
-    # ── If AI vs AI, start playing immediately ──          ← ADD (block A)
-    if state.mode == MODE_AIvAI:                             
-        redraw(surface, fonts, state)                        
-        pygame.display.flip()                                
-        run_ai_turn(state, surface, fonts, clock)            
-        pygame.time.wait(300)                                
+    if state.mode == MODE_AIvAI:
+        redraw(surface, fonts, state)
+        pygame.display.flip()
+        run_ai_turn(state, surface, fonts, clock)
+        pygame.time.wait(300)
 
     # ── Main game loop ──
     running = True
@@ -673,25 +670,14 @@ def main():
                     running = False
 
                 elif event.key == pygame.K_r:
-                    # Restart: go back to mode select
-                    mode = None
-                    while mode is None:
-                        for ev2 in pygame.event.get():
-                            if ev2.type == pygame.QUIT:
-                                pygame.quit(); sys.exit()
-                            if ev2.type == pygame.KEYDOWN:
-                                if ev2.key == pygame.K_1:
-                                    mode = MODE_HvAI
-                                elif ev2.key == pygame.K_2:
-                                    mode = MODE_HvH
-                                elif ev2.key == pygame.K_3:
-                                    mode = MODE_AIvAI
-                                elif ev2.key in (pygame.K_q, pygame.K_ESCAPE):
-                                    pygame.quit(); sys.exit()
-                        draw_mode_screen(surface, fonts)
+                    # ── Restart: run full setup again ──
+                    mode, opening, difficulty = select_game_settings(surface, fonts, clock)
+                    state = GameState(mode, opening=opening, difficulty=difficulty)
+                    if state.mode == MODE_AIvAI:
+                        redraw(surface, fonts, state)
                         pygame.display.flip()
-                        clock.tick(FPS)
-                    state = GameState(mode)
+                        run_ai_turn(state, surface, fonts, clock)
+                        pygame.time.wait(300)
 
                 elif event.key == pygame.K_u:
                     if state.game_over:
@@ -700,16 +686,13 @@ def main():
                         state.undo_move()
                         state.undo_move()
                     else:
-                        state.undo_move() 
+                        state.undo_move()
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if state.game_over:
                     continue
-
-                
                 if state.mode == MODE_AIvAI:
                     continue
-
-                # In HvAI mode, ignore clicks when it is the AI's turn
                 if state.mode == MODE_HvAI and state.current_player == state.ai_player:
                     continue
 
@@ -718,37 +701,29 @@ def main():
                     state.set_status("Click closer to an intersection.", error=True)
                     continue
 
-
                 row, col = pos
                 success = place_stone(state, row, col)
 
                 if success and not state.game_over:
-                    # HvAI: trigger AI response
                     if state.mode == MODE_HvAI and state.current_player == state.ai_player:
                         redraw(surface, fonts, state)
                         pygame.display.flip()
                         run_ai_turn(state, surface, fonts, clock)
-
-                    # Hotseat: compute suggestion for the next player
                     elif state.mode == MODE_HvH:
                         state.suggestion = None
                         redraw(surface, fonts, state)
                         pygame.display.flip()
                         run_suggestion(state)
 
-        # ── Draw ──
         redraw(surface, fonts, state)
         pygame.display.flip()
 
-        # ── AI vs AI keeps playing automatically ──     
         if state.mode == MODE_AIvAI and not state.game_over:
             run_ai_turn(state, surface, fonts, clock)
-            pygame.time.wait(300)       
-
+            pygame.time.wait(300)
 
     pygame.quit()
     sys.exit()
-
 
 if __name__ == "__main__":
     try:
