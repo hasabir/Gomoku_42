@@ -30,8 +30,12 @@ def run_ai_turn(state, surface, fonts, clock):
     state.waiting_for_ai = False
 
 def run_suggestion(state):
-    #! suggestion logic to be iplimented 
-    pass
+    move = get_move(
+        state.board,
+        state.current_player,
+        {BLACK: state.cap_black, WHITE: state.cap_white}
+    )
+    state.suggestion = move
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,9 +152,7 @@ def main():
                     if state.mode == MODE_HvAI and state.current_player == state.ai_player:
                         redraw(surface, fonts, state)
                         pygame.display.flip()
-                        print(state.waiting_for_ai)
                         run_ai_turn(state, surface, fonts, clock)
-                        print(state.waiting_for_ai)
 
                     # Hotseat: compute suggestion for the next player
                     elif state.mode == MODE_HvH:
@@ -158,6 +160,9 @@ def main():
                         redraw(surface, fonts, state)
                         pygame.display.flip()
                         run_suggestion(state)
+                        
+
+                        
 
         # ── Draw ──
         redraw(surface, fonts, state)

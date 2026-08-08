@@ -24,6 +24,6 @@ def px_to_board(px, py):
             return row, col
         return None
     except Exception():
-        print("Error converting pixel to board")
+
         pygame.quit()
         sys.exit()

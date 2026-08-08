@@ -307,7 +307,6 @@ def get_move(board, player, captures, max_depth=MAX_DEPTH):
         board_copy[r][c] = player
         if check_alignment(board_copy, r, c, player):
             board_copy[r][c] = 0
-            print("Immediate win move")
             return (r, c)
         board_copy[r][c] = 0
 
@@ -316,7 +315,6 @@ def get_move(board, player, captures, max_depth=MAX_DEPTH):
         board_copy[r][c] = opponent
         if check_alignment(board_copy, r, c, opponent):
             board_copy[r][c] = 0
-            print("Blocking opponent win")
             return (r, c)
         board_copy[r][c] = 0
 
@@ -334,7 +332,6 @@ def get_move(board, player, captures, max_depth=MAX_DEPTH):
                     nc += step*dc
             if count >= 4:
                 board_copy[r][c] = 0
-                print("Blocking 4-in-a-row")
                 return (r, c)
         board_copy[r][c] = 0
 

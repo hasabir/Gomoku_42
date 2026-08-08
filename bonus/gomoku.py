@@ -216,7 +216,6 @@ def draw_all_stones(surface, board, last_move=None, suggestion=None):
         cx, cy = board_to_px(sr, sc)
         pygame.draw.circle(surface, C_SUGGEST, (cx, cy), CELL//2 - 3, 3)
 
-
 def draw_panel(surface, fonts, state):
     """
     Draw the right-side info panel showing:
@@ -549,8 +548,12 @@ def run_ai_turn(state, surface, fonts, clock):
     state.waiting_for_ai = False
 
 def run_suggestion(state):
-    #! suggestion logic to be iplimented 
-    pass
+    move = get_move(
+        state.board,
+        state.current_player,
+        {BLACK: state.cap_black, WHITE: state.cap_white}
+    )
+    state.suggestion = move
 
 
 # ─────────────────────────────────────────────────────────────────────────────
